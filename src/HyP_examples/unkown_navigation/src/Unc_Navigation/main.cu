@@ -204,9 +204,8 @@ public:
 	case 2:     PolicyGraph::Load_Graph=false; break;
 	}
 	cout<<"Load_Graph="<<PolicyGraph::Load_Graph<<endl;
-	}
-
-
+	
+         }
 	std::string ChooseSolver(){
 		return "DESPOT";
 	}

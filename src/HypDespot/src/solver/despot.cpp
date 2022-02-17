@@ -486,6 +486,7 @@ VNode* DESPOT::ConstructTree(vector<State*>& particles, RandomStreams& streams,
 
 	VNode* root = NULL;
 	if (Globals::config.use_multi_thread_) {
+		cout << "using multi threading"<<endl;
 		root = new Shared_VNode(particles, particleIDs);
 		if (Globals::config.exploration_mode == UCT)
 			static_cast<Shared_VNode*>(root)->visit_count_ = 1.1;

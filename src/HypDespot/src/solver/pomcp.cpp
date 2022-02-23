@@ -67,6 +67,17 @@ POMCP::POMCP(const DSPOMDP* model, POMCPPrior* prior, Belief* belief) :
 void POMCP::reuse(bool r) {
 	reuse_ = r;
 }
+void POMCP::SpawnSearch() {
+	std::vector<thread> searchThreads;
+	for (int i = 0; i < Globals::config.NUM_THREADS; i++) {
+		searchThreads.push_back(thread(&POMCP::Search, this, Globals::config.time_per_move));
+	}
+
+	for (int i = 0; i < Globals::config.NUM_THREADS; i++) {
+		searchThreads.at(i).join();
+	}
+
+}
 
 ValuedAction POMCP::Search(double timeout) {
 	double start_cpu = clock(), start_real = get_time_second();
@@ -76,7 +87,7 @@ ValuedAction POMCP::Search(double timeout) {
 		root_ = CreateVNode(0, state, prior_, model_);
 		model_->Free(state);
 	}
-
+	
 	int hist_size = history_.Size();
 	bool done = false;
 	int num_sims = 0;

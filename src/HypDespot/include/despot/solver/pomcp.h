@@ -93,7 +93,7 @@ public:
 	POMCP(const DSPOMDP* model, POMCPPrior* prior, Belief* belief = NULL);
 	virtual ValuedAction Search();
 	virtual ValuedAction Search(double timeout);
-
+	void spawnSearch();
 	void reuse(bool r);
 	virtual void belief(Belief* b);
 	virtual void Update(int action, OBS_TYPE obs);

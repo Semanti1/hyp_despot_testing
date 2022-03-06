@@ -1,6 +1,7 @@
 #include <despot/solver/pomcp.h>
+#include <despot/solver/despot.h>
 #include <despot/util/logging.h>
-
+#include <thread>
 using namespace std;
 
 namespace despot {
@@ -67,16 +68,59 @@ POMCP::POMCP(const DSPOMDP* model, POMCPPrior* prior, Belief* belief) :
 void POMCP::reuse(bool r) {
 	reuse_ = r;
 }
-void POMCP::SpawnSearch() {
+ValuedAction POMCP::SpawnSearch() {
+	double start_cpu = clock(), start_real = get_time_second();
+
+	if (root_ == NULL) {
+		State* state = belief_->Sample(1)[0];
+		root_ = CreateVNode(0, state, prior_, model_);
+		//root_ = new Shared_VNode(0,)
+		model_->Free(state);
+	}
+	for (int i = 0; i < Globals::config.NUM_THREADS; i++) {
+		Expand_queue.send(static_cast<Shared_VNode*>(root));
+		
+	}
 	std::vector<thread> searchThreads;
 	for (int i = 0; i < Globals::config.NUM_THREADS; i++) {
-		searchThreads.push_back(thread(&POMCP::Search, this, Globals::config.time_per_move));
+		//POMCPPrior* priorp = model_->CreatePOMCPPrior("DEFAULT");
+		searchThreads.push_back(thread(&POMCP::Searchnew, this, Globals::config.time_per_move, model_->CreatePOMCPPrior("DEFAULT"), MsgQueque<Shared_VNode>&node_queue));
 	}
 
-	for (int i = 0; i < Globals::config.NUM_THREADS; i++) {
+	/*for (int i = 0; i < Globals::config.NUM_THREADS; i++) {
 		searchThreads.at(i).join();
+		//searchThreads[i].join();
+	}*/
+	for (auto& thr : searchThreads) {         
+		thr.join();
+	}
+	ValuedAction astar = OptimalAction(root_);
+	if (root_ == NULL)
+	{
+		cout << "root is still null " << endl;
+	}
+	else
+	{
+		cout << "root is not still null " << endl;
+	}
+	int s = root_->Size();
+	cout << "printing tree " << s << endl;
+	//root_->PrintTree(10,cout);
+	logi << "[POMCP::Search] Search statistics" << endl
+		<< "OptimalAction = " << astar << endl
+		<< "# Simulations = " << root_->count() << endl
+		<< "Time: CPU / Real = " << ((clock() - start_cpu) / CLOCKS_PER_SEC) << " / " << (get_time_second() - start_real) << endl
+		<< "# active particles = " << model_->NumActiveParticles() << endl
+		<< "Tree size = " << root_->Size() << endl;
+
+	if (astar.action == -1) {
+		for (int action = 0; action < model_->NumActions(); action++) {
+			cout << "action " << action << ": " << root_->Child(action)->count()
+				<< " " << root_->Child(action)->value() << endl;
+		}
 	}
 
+	return astar;
 }
 
 ValuedAction POMCP::Search(double timeout) {
@@ -95,12 +139,12 @@ ValuedAction POMCP::Search(double timeout) {
 		vector<State*> particles = belief_->Sample(1000);
 		for (int i = 0; i < particles.size(); i++) {
 			State* particle = particles[i];
-			logd << "[POMCP::Search] Starting simulation " << num_sims << endl;
-
-			Simulate(particle, root_, model_, prior_);
- 
+			//logd << "[POMCP::Search] Starting simulation " << num_sims << endl;
+			POMCPPrior* priorp = model_->CreatePOMCPPrior("DEFAULT");
+			//Simulate(particle, root_, model_, prior_);
+			Simulate(particle, static_cast<Shared_VNode*>(root_), model_, priorp);
 			num_sims++;
-			logd << "[POMCP::Search] " << num_sims << " simulations done" << endl;
+			//logd << "[POMCP::Search] " << num_sims << " simulations done" << endl;
 			history_.Truncate(hist_size);
 
 			if ((clock() - start_cpu) / CLOCKS_PER_SEC >= timeout) {
@@ -137,8 +181,50 @@ ValuedAction POMCP::Search(double timeout) {
 	return astar;
 }
 
+void POMCP::Searchnew(double timeout,POMCPPrior* privprior, MsgQueque<Shared_VNode>& node_queue ) {
+	double start_cpu = clock(), start_real = get_time_second();
+	//int hist_size = history_.Size();
+	bool done = false;
+	int num_sims = 0;
+	Shared_VNode* root = node_queue.receive(true, timeout);
+	while (true) {
+		vector<State*> particles = belief_->Sample(1000);
+		for (int i = 0; i < particles.size(); i++) {
+			State* particle = particles[i];
+			logd << "[POMCP::Search] Starting simulation " << num_sims << endl;
+			//POMCPPrior* priorp = model_->CreatePOMCPPrior("DEFAULT");
+			//Simulate(particle, root_, model_, prior_);
+			POMCPPrior* priorp = model_->CreatePOMCPPrior("DEFAULT");
+			//Simulate(particle, root_, model_, prior_);
+			Simulate(particle, root, model_, priorp);
+			//Simulate(particle, root_, model_, privprior);
+			num_sims++;
+			logd << "[POMCP::Search] " << num_sims << " simulations done" << endl;
+			
+			//history_.Truncate(hist_size);
+
+			if ((clock() - start_cpu) / CLOCKS_PER_SEC >= timeout) {
+				done = true;
+				break;
+			}
+		}
+
+		for (int i = 0; i < particles.size(); i++) {
+			model_->Free(particles[i]);
+		}
+
+		if (done)
+			break;
+	}
+
+	
+
+	// delete root_;
+	
+}
 ValuedAction POMCP::Search() {
-	return Search(Globals::config.time_per_move);
+	//return Search(Globals::config.time_per_move);
+	return SpawnSearch();
 }
 
 void POMCP::belief(Belief* b) {
@@ -227,10 +313,10 @@ int POMCP::Count(const VNode* vnode) {
 	return count;
 }
 
-VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
+Shared_VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 	const DSPOMDP* model) {
-	VNode* vnode = new VNode(0, 0.0, depth);
-
+	//VNode* vnode = new VNode(0, 0.0, depth);
+	Shared_VNode* vnode = new Shared_VNode(0, 0.0, depth);
 	prior->ComputePreference(*state);
 
 	const vector<int>& preferred_actions = prior->preferred_actions();
@@ -241,7 +327,8 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 
 	if (legal_actions.size() == 0) { // no prior knowledge, all actions are equal
 		for (int action = 0; action < model->NumActions(); action++) {
-			QNode* qnode = new QNode(vnode, action);
+			//QNode* qnode = new QNode(vnode, action);
+			Shared_QNode* qnode = new Shared_QNode(vnode, action);
 			qnode->count(0);
 			qnode->value(0);
 
@@ -249,7 +336,8 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 		}
 	} else {
 		for (int action = 0; action < model->NumActions(); action++) {
-			QNode* qnode = new QNode(vnode, action);
+			//QNode* qnode = new QNode(vnode, action);
+			Shared_QNode* qnode = new Shared_QNode(vnode, action);
 			qnode->count(large_count);
 			qnode->value(neg_infty);
 
@@ -257,14 +345,16 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 		}
 
 		for (int a = 0; a < legal_actions.size(); a++) {
-			QNode* qnode = vnode->Child(legal_actions[a]);
+			//QNode* qnode = vnode->Child(legal_actions[a]);
+			Shared_QNode* qnode = vnode->Child(legal_actions[a]);
 			qnode->count(0);
 			qnode->value(0);
 		}
 
 		for (int a = 0; a < preferred_actions.size(); a++) {
 			int action = preferred_actions[a];
-			QNode* qnode = vnode->Child(action);
+			//QNode* qnode = vnode->Child(action);
+			Shared_QNode* qnode = vnode->Child(action);
 			qnode->count(prior->SmartCount(action));
 			qnode->value(prior->SmartValue(action));
 		}
@@ -275,6 +365,8 @@ VNode* POMCP::CreateVNode(int depth, const State* state, POMCPPrior* prior,
 
 double POMCP::Simulate(State* particle, RandomStreams& streams, VNode* vnode,
 	const DSPOMDP* model, POMCPPrior* prior) {
+
+	cout << "Streams" << endl;
 	if (streams.Exhausted())
 		return 0;
 
@@ -315,9 +407,10 @@ double POMCP::Simulate(State* particle, RandomStreams& streams, VNode* vnode,
 }
 
 // static
-double POMCP::Simulate(State* particle, VNode* vnode, const DSPOMDP* model,
+/*double POMCP::Simulate(State* particle, VNode* vnode, const DSPOMDP* model,
 	POMCPPrior* prior) {
 	assert(vnode != NULL);
+	cout << "not SHARED" << endl;
 	if (vnode->depth() >= Globals::config.search_depth)
 		return 0;
 
@@ -349,7 +442,52 @@ double POMCP::Simulate(State* particle, VNode* vnode, const DSPOMDP* model,
 	vnode->Add(reward);
 
 	return reward;
+}*/
+
+double POMCP::Simulate(State* particle, Shared_VNode* vnode, const DSPOMDP* model,
+	POMCPPrior* prior) {
+	assert(vnode != NULL);
+	//cout << "SHARED" << endl;
+	if (vnode->depth() >= Globals::config.search_depth)
+		return 0;
+
+	double explore_constant = prior->exploration_constant();
+
+	int action = UpperBoundAction(vnode, explore_constant);
+
+	double reward;
+	OBS_TYPE obs;
+	bool terminal = model->Step(*particle, action, reward, obs);
+
+	Shared_QNode* qnode = vnode->Child(action);
+	if (!terminal) {
+		prior->Add(action, obs);
+		//map<OBS_TYPE, VNode*>& vnodes = qnode->children();
+		Shared_VNode* vnodechild = qnode->Child(obs);
+		//if (vnodes[obs] != NULL) {
+		if(vnodechild != NULL)
+		{
+			reward += Globals::Discount() * Simulate(particle, vnodechild, model, prior);
+				//* Simulate(particle, vnodes[obs], model, prior);
+		}
+		else { // Rollout upon encountering a node not in curren tree, then add the node
+			//lock_guard < mutex > lck(vnode->GetMutex());
+			//vnode->GetMutex().lock();
+			//vnodes[obs] = CreateVNode(vnode->depth() + 1, particle, prior,model);
+		    vnodechild = CreateVNode(vnode->depth() + 1, particle, prior, model);
+			//vnode->GetMutex().unlock();
+			reward += Globals::Discount()
+				* Rollout(particle, vnode->depth() + 1, model, prior);
+		}
+		prior->PopLast();
+	}
+
+	qnode->Add(reward);
+	vnode->Add(reward);
+
+	return reward;
 }
+
 
 // static
 double POMCP::Rollout(State* particle, RandomStreams& streams, int depth,

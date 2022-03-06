@@ -1,0 +1,16 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\src",
+    "\\src\\HypDespot",
+    "\\src\\HypDespot\\include",
+    "\\src\\HypDespot\\include\\despot",
+    "\\src\\HypDespot\\include\\despot\\GPUcore",
+    "\\src\\HypDespot\\src",
+    "\\src\\HypDespot\\src\\core",
+    "\\src\\HypDespot\\src\\GPUcore",
+    "\\src\\HypDespot\\src\\solver"
+  ],
+  "SelectedNode": "\\src\\HypDespot\\src\\solver\\despot.cpp",
+  "PreviewInSolutionExplorer": false
+}

@@ -1,6 +1,7 @@
 #include <despot/core/node.h>
 #include <despot/solver/despot.h>
-
+#include <omp.h>
+#include <atomic>
 using namespace std;
 
 namespace despot {
@@ -146,8 +147,18 @@ QNode* VNode::Child(int action) {
 
 int VNode::Size() const {
 	int size = 1;
+	cout << "Vnode has " << children_.size() << " children" << endl;
 	for (int a = 0; a < children_.size(); a++) {
+		if (children_[a] != NULL)
+		{
+			cout << "in VNODE NOT NULL" << endl;
+		}
+		else
+		{
+			cout << "in VNODE NULL" << endl;
+		}
 		size += children_[a]->Size();
+		//cout << "size" << size << endl;
 	}
 	return size;
 }
@@ -200,7 +211,9 @@ bool VNode::IsLeaf() {
 }
 
 void VNode::Add(double val) {
+//#pragma omp atomic
 	value_ = (value_ * count_ + val) / (count_ + 1);
+//#pragma omp atomic
 	count_++;
 }
 
@@ -372,8 +385,18 @@ VNode* QNode::Child(OBS_TYPE obs) {
 
 int QNode::Size() const {
 	int size = 0;
+	cout << "Qnode has " << children_.size() << " children" << endl;
 	for (map<OBS_TYPE, VNode*>::const_iterator it = children_.begin();
 		it != children_.end(); it++) {
+		cout << "first " << it->first << " second" << it->second->Size() << endl;
+		if (it->second != NULL)
+		{
+			cout << "NOT NULL" << endl;
+		}
+		else
+		{
+			cout << "NULL" << endl;
+		}
 		size += it->second->Size();
 	}
 	return size;
@@ -439,7 +462,9 @@ double QNode::utility_upper_bound() const {
 }
 
 void QNode::Add(double val) {
+#pragma omp atomic
 	value_ = (value_ * count_ + val) / (count_ + 1);
+#pragma omp atomic
 	count_++;
 }
 

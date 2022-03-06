@@ -3,6 +3,7 @@
 
 #include <despot/interface/pomdp.h>
 #include <despot/core/node.h>
+#include <despot/GPUcore/shared_node.h>
 #include <despot/core/globals.h>
 
 namespace despot {
@@ -85,6 +86,7 @@ public:
 
 class POMCP: public Solver {
 protected:
+	//VNode* root_;
 	VNode* root_;
 	POMCPPrior* prior_;
 	bool reuse_;
@@ -93,14 +95,17 @@ public:
 	POMCP(const DSPOMDP* model, POMCPPrior* prior, Belief* belief = NULL);
 	virtual ValuedAction Search();
 	virtual ValuedAction Search(double timeout);
-	void spawnSearch();
+	void Searchnew(double timeout,POMCPPrior* privprior, MsgQueque<Shared_VNode>& node_queue);
+	ValuedAction SpawnSearch();
 	void reuse(bool r);
 	virtual void belief(Belief* b);
 	virtual void Update(int action, OBS_TYPE obs);
 
-	static VNode* CreateVNode(int depth, const State*, POMCPPrior* prior,
+	static Shared_VNode* CreateVNode(int depth, const State*, POMCPPrior* prior,
 		const DSPOMDP* model);
-	static double Simulate(State* particle, VNode* root, const DSPOMDP* model,
+	//static double Simulate(State* particle, VNode* root, const DSPOMDP* model,
+	//	POMCPPrior* prior);
+	static double Simulate(State* particle, Shared_VNode* vnode, const DSPOMDP* model,
 		POMCPPrior* prior);
 	static double Simulate(State* particle, RandomStreams& streams,
 		VNode* vnode, const DSPOMDP* model, POMCPPrior* prior);

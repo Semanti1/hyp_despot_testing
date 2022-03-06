@@ -244,7 +244,7 @@ bool Shared_VNode::IsLeaf() {
 }
 
 void Shared_VNode::Add(double val) {
-	lock_guard<mutex> lck(_mutex);
+	//lock_guard<mutex> lck(_mutex);
 	value_ = (value_ * count_ + val) / (count_ + 1);
 	count_++;
 }
